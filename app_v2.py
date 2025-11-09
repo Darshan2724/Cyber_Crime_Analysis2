@@ -25,10 +25,11 @@ from modules_v2.data_loader_v2 import (
 from modules_v2.advanced_visuals import (
     create_3d_globe, create_animated_timeline, create_sunburst_chart,
     create_3d_scatter, create_radar_chart, create_heatmap_calendar,
-    create_gauge_chart, create_treemap, create_sankey_flow, create_waterfall_chart
+    create_gauge_chart, create_treemap, create_sankey_flow, create_waterfall_chart,
+    create_mitigation_chart
 )
 from modules_v2.live_feed import (
-    create_terminal_feed, create_attack_ticker, create_status_board
+    create_top_attacks, create_attack_ticker, create_status_board
 )
 
 # Page configuration
@@ -67,6 +68,13 @@ def main():
     with st.spinner('🔄 Initializing Threat Intelligence System...'):
         df = load_and_cache_data()
         time.sleep(0.5)  # Brief pause for effect
+
+    # Small data preview to validate adapter mapping (collapsible)
+    with st.expander("Data mapping preview (show/hide)"):
+        st.markdown("**Adapted DataFrame Columns:**")
+        st.write(list(df.columns))
+        st.markdown("**Sample rows (first 5):**")
+        st.dataframe(df.head(5), use_container_width=True)
     
     # Show success notification
     if st.session_state.show_notifications:
@@ -211,7 +219,7 @@ def main():
         st.markdown(create_status_board(filtered_df), unsafe_allow_html=True)
     
     with col2:
-        st.markdown(create_terminal_feed(filtered_df, n_recent=15), unsafe_allow_html=True)
+        st.markdown(create_top_attacks(filtered_df, n=10), unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -225,8 +233,7 @@ def main():
     total_data_loss = filtered_df['data_compromised_GB'].sum()
     avg_severity = filtered_df['attack_severity'].mean()
     critical_attacks = (filtered_df['attack_severity'] >= 8).sum()
-    avg_response_time = filtered_df['response_time_min'].mean()
-    unique_attackers = filtered_df['attacker_ip'].nunique()
+    # removed avg_response_time and unique_attackers per user request
     
     # Display metrics in glassmorphic cards
     col1, col2, col3, col4 = st.columns(4)
@@ -261,7 +268,7 @@ def main():
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown(create_metric_card(
@@ -270,28 +277,23 @@ def main():
             icon="🔴"
         ), unsafe_allow_html=True)
     
+    # Top attack type
+    top_attack_type = filtered_df['attack_type'].mode()[0] if len(filtered_df) > 0 else 'N/A'
     with col2:
         st.markdown(create_metric_card(
-            "AVG RESPONSE TIME",
-            f"{avg_response_time:.0f} min",
-            icon="⏱️"
+            "TOP ATTACK",
+            f"{top_attack_type}",
+            icon="⚠️"
         ), unsafe_allow_html=True)
-    
+
+    # Top industry
+    top_industry = filtered_df['industry'].mode()[0] if len(filtered_df) > 0 else 'N/A'
     with col3:
         st.markdown(create_metric_card(
-            "UNIQUE ATTACKERS",
-            f"{unique_attackers:,}",
-            icon="👤"
+            "TOP INDUSTRY",
+            f"{top_industry}",
+            icon="🏢"
         ), unsafe_allow_html=True)
-    
-    with col4:
-        # Threat level gauge
-        threat_level = (successful_attacks / total_attacks * 100) if total_attacks > 0 else 0
-        st.plotly_chart(
-            create_gauge_chart(threat_level, "THREAT LEVEL", 100),
-            use_container_width=True,
-            config={'displayModeBar': False}
-        )
     
     st.markdown("<br><br>", unsafe_allow_html=True)
     
@@ -359,8 +361,8 @@ def main():
     col1, col2 = st.columns(2)
     
     with col1:
-        fig_radar = create_radar_chart(filtered_df)
-        st.plotly_chart(fig_radar, use_container_width=True)
+        fig_mitigation = create_mitigation_chart(filtered_df)
+        st.plotly_chart(fig_mitigation, use_container_width=True)
     
     with col2:
         fig_waterfall = create_waterfall_chart(filtered_df)

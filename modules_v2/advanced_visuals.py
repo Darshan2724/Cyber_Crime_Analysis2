@@ -342,10 +342,11 @@ def create_sankey_flow(df, title='🔀 Attack Flow Diagram'):
         value.append(row['count'])
     
     fig = go.Figure(data=[go.Sankey(
+        arrangement='perpendicular',
         node=dict(
-            pad=15,
-            thickness=20,
-            line=dict(color=COLORS['cyan'], width=0.5),
+            pad=30,
+            thickness=30,
+            line=dict(color=COLORS['cyan'], width=1),
             label=all_nodes,
             color=[COLORS['cyan']] * len(attack_types) + 
                   [COLORS['purple']] * len(target_systems) + 
@@ -355,15 +356,38 @@ def create_sankey_flow(df, title='🔀 Attack Flow Diagram'):
             source=source,
             target=target,
             value=value,
-            color='rgba(0, 245, 255, 0.2)'
+            color=['rgba(0, 245, 255, 0.25)' for _ in value]
         )
     )])
     
     fig.update_layout(
-        font=dict(size=12, color=COLORS['text'])
+        font=dict(size=12, color=COLORS['text']),
+        margin=dict(l=10, r=10, t=60, b=10),
+        height=700
     )
-    apply_theme(fig, title=title, height=600)
+    apply_theme(fig, title=title, height=700)
     
+    return fig
+
+
+def create_mitigation_chart(df, title='🛠️ Mitigation Methods Breakdown'):
+    """Simple bar chart showing top mitigation methods and counts"""
+    data = df.groupby('mitigation_method').size().reset_index(name='count').nlargest(10, 'count')
+    if data.empty:
+        # fallback to default placeholder
+        data = pd.DataFrame({'mitigation_method': ['Standard Protocol'], 'count': [len(df)]})
+
+    fig = px.bar(
+        data,
+        x='count',
+        y='mitigation_method',
+        orientation='h',
+        title=title,
+        color='count',
+        color_continuous_scale=[[0, COLORS['cyan']], [0.5, COLORS['purple']], [1, COLORS['pink']]]
+    )
+    fig.update_layout(showlegend=False)
+    apply_theme(fig, title=title, height=400)
     return fig
 
 def create_waterfall_chart(df, title='💧 Cumulative Attack Impact'):

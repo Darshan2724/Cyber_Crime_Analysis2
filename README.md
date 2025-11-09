@@ -62,19 +62,26 @@ Dynamic sidebar filters for:
 ## 📁 Project Structure
 
 ```
-DarkSentinel/
+Cyber_Crime_Analysis/
 │
-├── cybersecurity_attacks.csv    # Raw dataset (40,000 records)
-├── Cyber_crime_analysis.ipynb   # Jupyter analysis notebook
-├── app.py                        # Main Streamlit application
+├── Global_Cybersecurity_Threats_2015-2024_LARGE.csv  # Main dataset (50,000+ records)
+├── Global_Cybersecurity_Threats_2015-2024.csv        # Regular dataset
+├── app_v2.py                     # Enhanced Streamlit application (current)
+├── app.py                        # Original version
 ├── requirements.txt              # Python dependencies
 ├── README.md                     # This file
 │
-└── modules/
-    ├── data_loader.py           # Data loading utilities
-    ├── preprocess.py            # Data cleaning & feature engineering
-    ├── visuals.py               # Plotly visualization functions
-    └── anomaly.py               # ML anomaly detection
+├── modules/                      # Core modules
+│   ├── data_adapter.py          # Dataset schema mapping
+│   ├── data_loader.py           # Basic data loading
+│   ├── preprocess.py            # Data preprocessing
+│   └── visuals.py               # Basic visualizations
+│
+└── modules_v2/                  # Enhanced modules for v2
+    ├── advanced_visuals.py      # 3D globe, Sankey, etc.
+    ├── data_loader_v2.py        # Enhanced data processing
+    ├── glassmorphism_theme.py   # UI theme and styling
+    └── live_feed.py             # Real-time updates
 ```
 
 ## 🚀 Installation & Setup
@@ -106,15 +113,24 @@ The dashboard will open automatically in your default browser at `http://localho
 
 ## 📊 Data Overview
 
-**Dataset**: `cybersecurity_attacks.csv`
-- **Records**: 40,000 cyber attack events
-- **Time Range**: 2020-2023
-- **Columns**: 25 features including:
-  - Timestamp, IP addresses, ports, protocols
-  - Attack type, severity, signatures
-  - Device information, geo-location
-  - IDS/IPS alerts, firewall logs
-  - Anomaly scores, payload data
+**Dataset**: `Global_Cybersecurity_Threats_2015-2024_LARGE.csv`
+- **Records**: 50,000+ cyber attack events
+- **Time Range**: 2015-2024
+- **Core Fields**:
+  - Country and Year
+  - Attack Type and Target Industry
+  - Financial Loss (in Million $)
+  - Number of Affected Users
+  - Attack Source
+  - Security Vulnerability Type
+  - Defense Mechanism Used
+  - Incident Resolution Time (in Hours)
+- **Derived Analytics**:
+  - Attack severity scores
+  - Data compromised estimates
+  - Geographic coordinates
+  - Network identifiers (IPs)
+  - Temporal patterns
 
 ## 🧠 Data Processing
 

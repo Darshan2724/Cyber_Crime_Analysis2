@@ -13,6 +13,7 @@ COLORS = {
     'pink': '#ff006e',
     'green': '#00ff88',
     'orange': '#ffaa00',
+    'text': '#b8c5d6',
 }
 
 def create_terminal_feed(df, n_recent=20):
@@ -190,6 +191,40 @@ def create_attack_ticker(df, n_items=5):
     
     return ticker_html
 
+
+def create_top_attacks(df, n=10):
+        """
+        Create an HTML block listing top N attacks with concise info.
+        """
+        # Sort by severity then data loss
+        if 'attack_severity' in df.columns:
+                top = df.sort_values(['attack_severity', 'data_compromised_GB'], ascending=False).head(n)
+        else:
+                top = df.sort_values('data_compromised_GB', ascending=False).head(n)
+
+        rows = []
+        for _, a in top.iterrows():
+                ts = pd.to_datetime(a.get('timestamp', pd.Timestamp.now()))
+                rows.append(f"<tr>\n<td style='padding:8px'>{ts.strftime('%Y-%m-%d')}</td>\n<td style='padding:8px'>{a.get('attack_type','Unknown')}</td>\n<td style='padding:8px'>{a.get('target_system','Unknown')}</td>\n<td style='padding:8px'>{a.get('location','Unknown')}</td>\n<td style='padding:8px'>{a.get('attack_severity',0)}</td>\n<td style='padding:8px'>{a.get('data_compromised_GB',0):.1f} GB</td>\n</tr>")
+
+        table_html = f"""
+        <div style="background: rgba(0,0,0,0.6); border:1px solid {COLORS['cyan']}; border-radius:10px; padding:12px;">
+            <div style="color: {COLORS['cyan']}; font-weight:700; margin-bottom:8px;">🏆 TOP {n} ATTACKS</div>
+            <table style="width:100%; border-collapse:collapse; color: white; font-size:13px;">
+                <thead>
+                    <tr style="text-align:left; border-bottom:1px solid rgba(255,255,255,0.08)">
+                        <th style="padding:8px">Date</th><th>Type</th><th>Target</th><th>Location</th><th>Severity</th><th>Data Loss</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(rows)}
+                </tbody>
+            </table>
+        </div>
+        """
+
+        return table_html
+
 def create_status_board(df):
     """
     Create real-time status board
@@ -211,67 +246,31 @@ def create_status_board(df):
     critical_count = (df['attack_severity'] >= 8).sum()
     total_data_loss = df['data_compromised_GB'].sum()
     
-    # Threat level calculation
-    threat_percentage = (active_threats / total_attacks * 100) if total_attacks > 0 else 0
-    
-    if threat_percentage >= 70:
-        threat_level = "CRITICAL"
-        threat_color = COLORS['pink']
-        threat_icon = "🔴"
-    elif threat_percentage >= 40:
-        threat_level = "ELEVATED"
-        threat_color = COLORS['orange']
-        threat_icon = "🟡"
-    else:
-        threat_level = "MODERATE"
-        threat_color = COLORS['green']
-        threat_icon = "🟢"
-    
+    # Create a compact status board (removed big threat banner per request)
     status_html = f"""
-    <div style="
-        background: rgba(0, 0, 0, 0.6);
-        border: 2px solid {threat_color};
-        border-radius: 15px;
-        padding: 20px;
-        box-shadow: 0 0 30px {threat_color};
-    ">
-        <div style="text-align: center; margin-bottom: 20px;">
-            <div style="font-size: 48px;">{threat_icon}</div>
-            <div style="color: {threat_color}; font-size: 24px; font-weight: bold; margin-top: 10px;">
-                THREAT LEVEL: {threat_level}
-            </div>
-            <div style="color: {COLORS['cyan']}; font-size: 14px; margin-top: 5px;">
-                System Status: OPERATIONAL
-            </div>
+    <div style="background: rgba(0, 0, 0, 0.6); border-radius: 12px; padding: 14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div style="color: {COLORS['cyan']}; font-weight:700;">⚡ SYSTEM STATUS</div>
+        <div style="color: {COLORS['text']}; font-size:12px;">Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="background: rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+          <div style="color:{COLORS['cyan']}; font-size:11px;">TOTAL ATTACKS</div>
+          <div style="color:white; font-weight:700; font-size:20px;">{total_attacks:,}</div>
         </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
-            <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 10px; border-left: 3px solid {COLORS['cyan']};">
-                <div style="color: {COLORS['cyan']}; font-size: 12px;">TOTAL ATTACKS</div>
-                <div style="color: white; font-size: 28px; font-weight: bold;">{total_attacks:,}</div>
-            </div>
-            
-            <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 10px; border-left: 3px solid {COLORS['pink']};">
-                <div style="color: {COLORS['pink']}; font-size: 12px;">SUCCESSFUL ATTACKS</div>
-                <div style="color: white; font-size: 28px; font-weight: bold;">{active_threats:,}</div>
-            </div>
-            
-            <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 10px; border-left: 3px solid {COLORS['orange']};">
-                <div style="color: {COLORS['orange']}; font-size: 12px;">CRITICAL SEVERITY</div>
-                <div style="color: white; font-size: 28px; font-weight: bold;">{critical_count:,}</div>
-            </div>
-            
-            <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 10px; border-left: 3px solid {COLORS['purple']};">
-                <div style="color: {COLORS['purple']}; font-size: 12px;">DATA COMPROMISED</div>
-                <div style="color: white; font-size: 28px; font-weight: bold;">{total_data_loss/1024:.1f} TB</div>
-            </div>
+        <div style="background: rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+          <div style="color:{COLORS['pink']}; font-size:11px;">SUCCESSFUL ATTACKS</div>
+          <div style="color:white; font-weight:700; font-size:20px;">{active_threats:,}</div>
         </div>
-        
-        <div style="margin-top: 20px; padding: 10px; background: rgba(0, 245, 255, 0.1); border-radius: 8px; text-align: center;">
-            <div style="color: {COLORS['cyan']}; font-size: 12px;">
-                ⚡ Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-            </div>
+        <div style="background: rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+          <div style="color:{COLORS['orange']}; font-size:11px;">CRITICAL SEVERITY</div>
+          <div style="color:white; font-weight:700; font-size:20px;">{critical_count:,}</div>
         </div>
+        <div style="background: rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+          <div style="color:{COLORS['purple']}; font-size:11px;">DATA COMPROMISED</div>
+          <div style="color:white; font-weight:700; font-size:20px;">{total_data_loss/1024:.1f} TB</div>
+        </div>
+      </div>
     </div>
     """
     

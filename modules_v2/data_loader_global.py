@@ -23,7 +23,21 @@ def load_global_data(file_path='Global_Cybersecurity_Threats_2015-2024_LARGE.csv
         Loaded and processed dataframe
     """
     try:
-        df = pd.read_csv(file_path)
+        # If explicit file exists, load it. Otherwise, try the data adapter to
+        # find and map an available CSV in the project root so the app doesn't
+        # crash when the expected filename isn't present.
+        from pathlib import Path
+        requested = Path(file_path)
+        if requested.exists():
+            df = pd.read_csv(requested)
+        else:
+            try:
+                from ..modules.data_adapter import load_best_dataset
+                st.info(f"Requested file '{file_path}' not found — using data adapter to locate a dataset.")
+                df = load_best_dataset(root_dir='.')
+            except Exception:
+                # Fall back to attempting to read the original path (will raise FileNotFoundError)
+                df = pd.read_csv(file_path)
         
         # Create datetime column from Year
         df['Date'] = pd.to_datetime(df['Year'].astype(str) + '-01-01')
@@ -55,7 +69,7 @@ def load_global_data(file_path='Global_Cybersecurity_Threats_2015-2024_LARGE.csv
         
     except FileNotFoundError:
         st.error(f"❌ Data file not found: {file_path}")
-        st.info("Please ensure 'Global_Cybersecurity_Threats_2015-2024.csv' is in the project directory.")
+        st.info("Please ensure a dataset CSV is in the project directory. The app will also try other CSVs via the data adapter.")
         st.stop()
     except Exception as e:
         st.error(f"❌ Error loading data: {str(e)}")
@@ -75,18 +89,20 @@ def get_data_summary(df):
     dict
         Summary statistics
     """
+    # Build a robust summary while tolerating missing columns
     summary = {
         'total_records': len(df),
         'total_columns': len(df.columns),
-        'year_range_start': df['Year'].min(),
-        'year_range_end': df['Year'].max(),
-        'total_years': df['Year'].max() - df['Year'].min() + 1,
-        'unique_countries': df['Country'].nunique(),
-        'unique_attack_types': df['Attack Type'].nunique(),
-        'total_financial_loss_billion': df['Financial Loss (in Million $)'].sum() / 1000,
-        'avg_financial_loss_million': df['Financial Loss (in Million $)'].mean(),
-        'total_affected_users': df['Number of Affected Users'].sum(),
-        'avg_resolution_time_hours': df['Incident Resolution Time (in Hours)'].mean(),
+        'date_range_start': (df['timestamp'].min() if 'timestamp' in df.columns else None),
+        'date_range_end': (df['timestamp'].max() if 'timestamp' in df.columns else None),
+        'total_days': ((df['timestamp'].max() - df['timestamp'].min()).days if 'timestamp' in df.columns else None),
+        'unique_attackers': int(df['attacker_ip'].nunique()) if 'attacker_ip' in df.columns else 0,
+        'unique_targets': int(df['target_ip'].nunique()) if 'target_ip' in df.columns else 0,
+        'total_data_compromised_TB': (df['data_compromised_GB'].sum() / 1024) if 'data_compromised_GB' in df.columns else 0,
+        'avg_attack_duration_hours': (df['attack_duration_min'].mean() / 60) if 'attack_duration_min' in df.columns else 0,
+        'avg_response_time_hours': (df['response_time_min'].mean() / 60) if 'response_time_min' in df.columns else 0,
+        'success_rate': ((df['outcome'] == 'Success').mean() * 100) if 'outcome' in df.columns else 0,
+        'avg_severity': float(df['attack_severity'].mean()) if 'attack_severity' in df.columns else 0,
         'memory_usage_mb': df.memory_usage(deep=True).sum() / (1024**2)
     }
     return summary
@@ -105,15 +121,19 @@ def get_attack_statistics(df):
     dict
         Attack statistics
     """
+    # Safely collect various breakdowns; if a column is missing, return empty dict
+    def _vc(col):
+        return df[col].value_counts().to_dict() if col in df.columns else {}
+
     stats = {
-        'by_country': df['Country'].value_counts().to_dict(),
-        'by_attack_type': df['Attack Type'].value_counts().to_dict(),
-        'by_industry': df['Target Industry'].value_counts().to_dict(),
-        'by_source': df['Attack Source'].value_counts().to_dict(),
-        'by_vulnerability': df['Security Vulnerability Type'].value_counts().to_dict(),
-        'by_defense': df['Defense Mechanism Used'].value_counts().to_dict(),
-        'by_year': df['Year'].value_counts().sort_index().to_dict(),
-        'by_severity': df['Severity_Category'].value_counts().to_dict(),
+        'by_country': _vc('Country'),
+        'by_attack_type': _vc('Attack Type') or _vc('attack_type'),
+        'by_industry': _vc('Target Industry') or _vc('industry'),
+        'by_source': _vc('Attack Source') or _vc('attack_source'),
+        'by_vulnerability': _vc('Security Vulnerability Type') or _vc('vulnerability_type'),
+        'by_defense': _vc('Defense Mechanism Used') or _vc('defense_mechanism'),
+        'by_year': _vc('Year'),
+        'by_severity': _vc('Severity_Category') or _vc('severity_category'),
     }
     return stats
 

@@ -85,7 +85,8 @@ def apply_glassmorphism_theme():
         background-clip: text;
         font-weight: 700;
         letter-spacing: 2px;
-        text-shadow: 0 0 20px rgba(0, 245, 255, 0.5);
+        /* reduced shadow to avoid blurred headings */
+        text-shadow: 0 0 6px rgba(0, 245, 255, 0.12);
     }}
     
     p, div, span, label {{
@@ -372,8 +373,7 @@ def create_header(title, subtitle=""):
             font-family: 'Orbitron', sans-serif;
             font-weight: 700;
             letter-spacing: 3px;
-            text-shadow: 0 0 20px rgba(77, 208, 225, 0.5), 0 0 40px rgba(77, 208, 225, 0.3);
-            animation: float 3s ease-in-out infinite;
+            text-shadow: none; /* remove heavy glow for readability */
         ">
             🛡️ {title}
         </h1>

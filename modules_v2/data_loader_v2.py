@@ -23,12 +23,56 @@ def load_data(file_path='cybersecurity_large_synthesized_data.csv'):
         Loaded and validated dataframe
     """
     try:
-        df = pd.read_csv(file_path)
+        # Always try to use the data adapter first to get the best available dataset
+        import sys
+        from pathlib import Path
         
-        # Convert timestamp to datetime
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Add the parent directory to Python path to enable imports
+        root_dir = Path(__file__).parent.parent
+        if str(root_dir) not in sys.path:
+            sys.path.append(str(root_dir))
+            
+        try:
+            from modules.data_adapter import load_best_dataset
+            st.info("Using data adapter to locate the best available dataset...")
+            df = load_best_dataset(root_dir=str(root_dir))
+        except Exception as e:
+            st.error(f"Data adapter error: {str(e)}")
+            # Fallback: try to load the file directly
+            requested = Path(file_path)
+            if requested.exists():
+                df = pd.read_csv(requested)
+            else:
+                # Last resort: try to find any suitable CSV
+                csv_files = list(root_dir.glob("*.csv"))
+                if csv_files:
+                    df = pd.read_csv(csv_files[0])
+                    st.info(f"Using found dataset: {csv_files[0].name}")
+                else:
+                    raise FileNotFoundError(f"No suitable dataset found in {root_dir}")
         
-        # Add computed columns
+        # Handle different possible timestamp column names and create timestamp column
+        timestamp_candidates = ['timestamp', 'Timestamp', 'Year']
+        timestamp_col = None
+        
+        for col in timestamp_candidates:
+            if col in df.columns:
+                timestamp_col = col
+                break
+        
+        if timestamp_col is None:
+            st.warning("No timestamp column found. Creating one with current time.")
+            df['timestamp'] = pd.Timestamp.now()
+        elif timestamp_col == 'Year':
+            # Convert Year to a proper timestamp (Jan 1st of that year)
+            df['timestamp'] = pd.to_datetime(df['Year'].astype(str) + '-01-01')
+        else:
+            # Use the found timestamp column
+            df['timestamp'] = pd.to_datetime(df[timestamp_col], errors='coerce').fillna(pd.Timestamp.now())
+            if timestamp_col != 'timestamp':
+                df['timestamp'] = df[timestamp_col]  # Ensure we have a lowercase 'timestamp' column
+        
+        # Add computed columns based on timestamp
         df['date'] = df['timestamp'].dt.date
         df['year'] = df['timestamp'].dt.year
         df['month'] = df['timestamp'].dt.month
@@ -38,6 +82,28 @@ def load_data(file_path='cybersecurity_large_synthesized_data.csv'):
         df['day_name'] = df['timestamp'].dt.day_name()
         df['hour'] = df['timestamp'].dt.hour
         df['minute'] = df['timestamp'].dt.minute
+        
+        # Ensure required columns exist with default values
+        required_columns = {
+            'attack_type': 'Unknown',
+            'target_system': 'Generic System',
+            'location': 'Unknown Location',
+            'industry': 'Various',
+            'attack_severity': 5,  # Medium severity default
+            'data_compromised_GB': 0,
+            'outcome': 'Unknown',
+            'attacker_ip': '0.0.0.0',
+            'target_ip': '0.0.0.0',
+            'user_role': 'User',
+            'security_tools_used': 'Basic Security Suite',
+            'mitigation_method': 'Standard Protocol',
+            'attack_duration_min': 30,  # Default 30 minutes
+            'response_time_min': 15,    # Default 15 minutes
+        }
+        
+        for col, default_value in required_columns.items():
+            if col not in df.columns:
+                df[col] = default_value
         
         # Add success rate
         df['is_successful'] = (df['outcome'] == 'Success').astype(int)
@@ -63,7 +129,7 @@ def load_data(file_path='cybersecurity_large_synthesized_data.csv'):
         
     except FileNotFoundError:
         st.error(f"❌ Data file not found: {file_path}")
-        st.info("Please ensure 'cybersecurity_large_synthesized_data.csv' is in the project directory.")
+        st.info("Please ensure a dataset CSV is in the project directory. The app will also try other CSVs via the data adapter.")
         st.stop()
     except Exception as e:
         st.error(f"❌ Error loading data: {str(e)}")
