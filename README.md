@@ -106,7 +106,7 @@ pip install -r requirements.txt
 ### Step 3: Run the Dashboard
 
 ```bash
-streamlit run app.py
+streamlit run app_v2.py
 ```
 
 The dashboard will open automatically in your default browser at `http://localhost:8501`
@@ -239,7 +239,7 @@ WORKDIR /app
 COPY . /app
 RUN pip install -r requirements.txt
 EXPOSE 8501
-CMD ["streamlit", "run", "app.py"]
+CMD ["streamlit", "run", "app_v2.py"]
 ```
 
 ### Render / Railway / Heroku

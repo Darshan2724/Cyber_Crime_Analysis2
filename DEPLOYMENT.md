@@ -49,7 +49,7 @@
    - Sign in with GitHub
    - Click "New app"
    - Select your repository: `Darshan2724/Cyber_Crime_Analysis`
-   - Main file path: `app.py`
+   - Main file path: `app_v2.py`
    - Click "Deploy"
 
 3. **Configuration**
@@ -94,7 +94,7 @@ EXPOSE 8501
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
 
 # Run the application
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "app_v2.py", "--server.port=8501", "--server.address=0.0.0.0"]
 ```
 
 **Build and Run:**
@@ -132,8 +132,8 @@ docker run -p 8501:8501 darksentinel
      - type: web
        name: darksentinel
        env: python
-       buildCommand: pip install -r requirements.txt
-       startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+   buildCommand: pip install -r requirements.txt
+   startCommand: streamlit run app_v2.py --server.port $PORT --server.address 0.0.0.0
    ```
 
 2. **Deploy**
@@ -141,7 +141,7 @@ docker run -p 8501:8501 darksentinel
    - Connect GitHub repository
    - Select "Web Service"
    - Build command: `pip install -r requirements.txt`
-   - Start command: `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`
+      - Start command: `streamlit run app_v2.py --server.port $PORT --server.address 0.0.0.0`
 
 **Pros:**
 - Free tier available
@@ -159,7 +159,7 @@ docker run -p 8501:8501 darksentinel
 
 **Create `Procfile`:**
 ```
-web: sh setup.sh && streamlit run app.py
+web: sh setup.sh && streamlit run app_v2.py
 ```
 
 **Create `setup.sh`:**
@@ -209,7 +209,7 @@ git push heroku main
    ```bash
    # Using screen
    screen -S darksentinel
-   streamlit run app.py --server.port 80
+   streamlit run app_v2.py --server.port 80
    # Ctrl+A+D to detach
    ```
 
@@ -290,7 +290,7 @@ git push heroku main
 pip install -r requirements.txt
 
 # 2. Run application
-python -m streamlit run app.py
+python -m streamlit run app_v2.py
 
 # 3. Test all tabs
 # - Navigate to each tab
@@ -359,12 +359,27 @@ serverAddress = "localhost"
 
 ### `requirements.txt` (Already Created)
 ```
-streamlit==1.28.0
-pandas==2.1.1
-numpy==1.25.2
-plotly==5.17.0
-scikit-learn==1.3.1
-matplotlib==3.8.0
+# Core Framework
+streamlit==1.30.0
+pandas==2.1.4
+numpy==1.26.2
+
+# Visualizations
+plotly==5.18.0
+matplotlib==3.8.2
+
+# Machine Learning
+scikit-learn==1.3.2
+
+# Enhanced UI Components
+streamlit-extras==0.3.6
+streamlit-lottie==0.0.5
+streamlit-option-menu==0.3.6
+streamlit-card==0.0.61
+
+# Additional Features
+Pillow==10.1.0
+requests==2.31.0
 ```
 
 ---
