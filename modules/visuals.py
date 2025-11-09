@@ -30,19 +30,86 @@ PLOTLY_TEMPLATE = {
 }
 
 def create_time_series_chart(df, date_col='Date', title='Attacks Over Time'):
-    """Create time series chart of attacks"""
-    time_data = df.groupby(date_col).size().reset_index(name='count')
+    """Create time series chart of attacks with improved scaling and visibility"""
+    # Resample to monthly data if we have daily data
+    if pd.api.types.is_datetime64_any_dtype(df[date_col]):
+        time_data = df.set_index(date_col).resample('M').size().reset_index(name='count')
+        time_data[date_col] = time_data[date_col].dt.strftime('%Y-%m')
+    else:
+        time_data = df.groupby(date_col).size().reset_index(name='count')
     
-    fig = px.line(
-        time_data, 
-        x=date_col, 
-        y='count',
-        title=title,
-        labels={'count': 'Number of Attacks', date_col: 'Date'}
+    # Calculate 3-month moving average for trend line
+    time_data['moving_avg'] = time_data['count'].rolling(window=3, min_periods=1).mean()
+    
+    # Create figure with secondary y-axis for better scaling
+    fig = make_subplots(specs=[[{"secondary_y": False}]])
+    
+    # Add bar chart for actual counts
+    fig.add_trace(
+        go.Bar(
+            x=time_data[date_col],
+            y=time_data['count'],
+            name='Monthly Attacks',
+            marker_color=COLORS['primary'],
+            opacity=0.7,
+            hovertemplate='<b>%{x}</b><br>Attacks: %{y:,d}<extra></extra>'
+        ),
+        secondary_y=False,
     )
     
-    fig.update_traces(line_color=COLORS['primary'], line_width=2)
-    fig.update_layout(**PLOTLY_TEMPLATE['layout'])
+    # Add line for moving average
+    fig.add_trace(
+        go.Scatter(
+            x=time_data[date_col],
+            y=time_data['moving_avg'],
+            name='3-Month Trend',
+            line=dict(color=COLORS['success'], width=3),
+            hovertemplate='<b>%{x}</b><br>3-Month Avg: %{y:,.1f}<extra></extra>'
+        ),
+        secondary_y=False,
+    )
+    
+    # Update layout for better visibility
+    fig.update_layout(
+        **PLOTLY_TEMPLATE['layout'],
+        title=title,
+        xaxis=dict(
+            title='Date',
+            showgrid=True,
+            gridcolor='rgba(255, 255, 255, 0.1)',
+            tickangle=45
+        ),
+        yaxis=dict(
+            title='Number of Attacks',
+            showgrid=True,
+            gridcolor='rgba(255, 255, 255, 0.1)',
+            type='log' if time_data['count'].max() > 5 * time_data['count'].min() > 0 else 'linear',
+            autorange=True
+        ),
+        hovermode='x unified',
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    # Add range slider for better navigation
+    fig.update_xaxes(
+        rangeslider_visible=True,
+        rangeselector=dict(
+            buttons=list([
+                dict(count=1, label="1m", step="month", stepmode="backward"),
+                dict(count=6, label="6m", step="month", stepmode="backward"),
+                dict(count=1, label="YTD", step="year", stepmode="todate"),
+                dict(count=1, label="1y", step="year", stepmode="backward"),
+                dict(step="all")
+            ])
+        )
+    )
     
     return fig
 

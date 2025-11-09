@@ -34,7 +34,7 @@ def load_data(file_path='cybersecurity_large_synthesized_data.csv'):
             
         try:
             from modules.data_adapter import load_best_dataset
-            st.info("Using data adapter to locate the best available dataset...")
+            # Silently use data adapter to locate the best available dataset
             df = load_best_dataset(root_dir=str(root_dir))
         except Exception as e:
             st.error(f"Data adapter error: {str(e)}")
@@ -51,7 +51,7 @@ def load_data(file_path='cybersecurity_large_synthesized_data.csv'):
                 else:
                     raise FileNotFoundError(f"No suitable dataset found in {root_dir}")
         
-        # Handle different possible timestamp column names and create timestamp column
+        # Handle different possible timestamp column names and create a clean datetime 'timestamp' column
         timestamp_candidates = ['timestamp', 'Timestamp', 'Year']
         timestamp_col = None
         
@@ -65,12 +65,14 @@ def load_data(file_path='cybersecurity_large_synthesized_data.csv'):
             df['timestamp'] = pd.Timestamp.now()
         elif timestamp_col == 'Year':
             # Convert Year to a proper timestamp (Jan 1st of that year)
-            df['timestamp'] = pd.to_datetime(df['Year'].astype(str) + '-01-01')
+            df['timestamp'] = pd.to_datetime(df['Year'].astype(str) + '-01-01', errors='coerce')
         else:
-            # Use the found timestamp column
-            df['timestamp'] = pd.to_datetime(df[timestamp_col], errors='coerce').fillna(pd.Timestamp.now())
-            if timestamp_col != 'timestamp':
-                df['timestamp'] = df[timestamp_col]  # Ensure we have a lowercase 'timestamp' column
+            # Parse the found timestamp column into datetime
+            df['timestamp'] = pd.to_datetime(df[timestamp_col], errors='coerce')
+        
+        # Drop rows where timestamp could not be parsed to avoid defaulting everything to 'now'
+        if df['timestamp'].isna().any():
+            df = df.dropna(subset=['timestamp']).reset_index(drop=True)
         
         # Add computed columns based on timestamp
         df['date'] = df['timestamp'].dt.date
@@ -104,6 +106,10 @@ def load_data(file_path='cybersecurity_large_synthesized_data.csv'):
         for col, default_value in required_columns.items():
             if col not in df.columns:
                 df[col] = default_value
+
+        # If dataset provides 'target_industry', map it into the expected 'industry' column
+        if 'target_industry' in df.columns:
+            df['industry'] = df['industry'].where(df['industry'].ne('Various'), df['target_industry'])
         
         # Add success rate
         df['is_successful'] = (df['outcome'] == 'Success').astype(int)
@@ -241,11 +247,14 @@ def filter_data(df, filters):
     """
     filtered = df.copy()
     
-    if filters.get('date_range'):
+    if filters.get('date_range') and len(filters['date_range']) == 2:
         start_date, end_date = filters['date_range']
+        # Convert to datetime for proper comparison
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)  # Include full end day
         filtered = filtered[
-            (filtered['timestamp'].dt.date >= start_date) &
-            (filtered['timestamp'].dt.date <= end_date)
+            (filtered['timestamp'] >= start_dt) &
+            (filtered['timestamp'] <= end_dt)
         ]
     
     if filters.get('attack_types'):
@@ -265,9 +274,11 @@ def filter_data(df, filters):
     
     if filters.get('severity_range'):
         min_sev, max_sev = filters['severity_range']
+        # Convert severity to numeric for comparison
+        severity_numeric = pd.to_numeric(filtered['attack_severity'], errors='coerce').fillna(5)
         filtered = filtered[
-            (filtered['attack_severity'] >= min_sev) &
-            (filtered['attack_severity'] <= max_sev)
+            (severity_numeric >= min_sev) &
+            (severity_numeric <= max_sev)
         ]
     
     if filters.get('user_roles'):

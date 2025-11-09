@@ -50,6 +50,8 @@ if 'show_notifications' not in st.session_state:
     st.session_state.show_notifications = True
 if 'fullscreen_chart' not in st.session_state:
     st.session_state.fullscreen_chart = None
+if 'filters_applied' not in st.session_state:
+    st.session_state.filters_applied = False
 
 # Load data
 @st.cache_data(ttl=3600)
@@ -64,24 +66,12 @@ def main():
         "CYBER COMMAND CENTER | REAL-TIME THREAT INTELLIGENCE"
     ), unsafe_allow_html=True)
     
-    # Load data with loading animation
-    with st.spinner('🔄 Initializing Threat Intelligence System...'):
-        df = load_and_cache_data()
-        time.sleep(0.5)  # Brief pause for effect
+    # Load data
+    df = load_and_cache_data()
 
-    # Small data preview to validate adapter mapping (collapsible)
-    with st.expander("Data mapping preview (show/hide)"):
-        st.markdown("**Adapted DataFrame Columns:**")
-        st.write(list(df.columns))
-        st.markdown("**Sample rows (first 5):**")
-        st.dataframe(df.head(5), use_container_width=True)
+    # Data preview removed per user request
     
-    # Show success notification
-    if st.session_state.show_notifications:
-        st.markdown(create_toast_notification(
-            "✅ System Online | 100,000 Records Loaded",
-            "success"
-        ), unsafe_allow_html=True)
+    # Notification removed per user request
     
     # Sidebar - Advanced Filters
     with st.sidebar:
@@ -93,15 +83,61 @@ def main():
         
         st.markdown("---")
         
-        # Date range filter
-        st.markdown(f"<p style='color: {COLORS['cyan']}; font-weight: 600;'>📅 DATE RANGE</p>", unsafe_allow_html=True)
-        date_range = st.date_input(
-            "Select date range",
-            value=(df['timestamp'].min().date(), df['timestamp'].max().date()),
-            min_value=df['timestamp'].min().date(),
-            max_value=df['timestamp'].max().date(),
-            label_visibility="collapsed"
+        # Time period filter
+        st.markdown(f"<p style='color: {COLORS['cyan']}; font-weight: 600;'>📅 TIME PERIOD</p>", unsafe_allow_html=True)
+        
+        # Preset time ranges
+        time_preset = st.selectbox(
+            "Quick Select",
+            options=['All Time', 'Past 2 Weeks', 'Past Month', 'Past 6 Months', 'Past Year', 'Custom Year Range'],
+            index=0,
+            label_visibility="collapsed",
+            key="time_preset_selector"
         )
+        
+        # Store previous selection to detect changes
+        if 'prev_time_preset' not in st.session_state:
+            st.session_state.prev_time_preset = 'All Time'
+        
+        # Auto-apply if preset changed (data will auto-refresh)
+        if time_preset != st.session_state.prev_time_preset:
+            st.session_state.prev_time_preset = time_preset
+            # Only auto-rerun for non-custom ranges
+            if time_preset != 'Custom Year Range':
+                st.rerun()
+        
+        # Calculate date range based on preset
+        max_date = df['timestamp'].max()
+        min_date = df['timestamp'].min()
+        
+        if time_preset == 'Past 2 Weeks':
+            start_date = (max_date - pd.Timedelta(days=14)).date()
+            end_date = max_date.date()
+        elif time_preset == 'Past Month':
+            start_date = (max_date - pd.Timedelta(days=30)).date()
+            end_date = max_date.date()
+        elif time_preset == 'Past 6 Months':
+            start_date = (max_date - pd.Timedelta(days=180)).date()
+            end_date = max_date.date()
+        elif time_preset == 'Past Year':
+            start_date = (max_date - pd.Timedelta(days=365)).date()
+            end_date = max_date.date()
+        elif time_preset == 'Custom Year Range':
+            # Year range selector
+            min_year = min_date.year
+            max_year = max_date.year
+            col_y1, col_y2 = st.columns(2)
+            with col_y1:
+                start_year = st.selectbox("From", range(min_year, max_year + 1), index=0, key="start_year")
+            with col_y2:
+                end_year = st.selectbox("To", range(min_year, max_year + 1), index=max_year - min_year, key="end_year")
+            start_date = pd.Timestamp(year=start_year, month=1, day=1).date()
+            end_date = pd.Timestamp(year=end_year, month=12, day=31).date()
+        else:  # All Time
+            start_date = min_date.date()
+            end_date = max_date.date()
+        
+        date_range = (start_date, end_date)
         
         st.markdown("---")
         
@@ -165,14 +201,23 @@ def main():
         # Apply filters button
         if st.button("🔍 APPLY FILTERS", use_container_width=True):
             st.session_state.show_notifications = True
+            st.session_state.filters_applied = True
+            st.rerun()
         
         # Reset filters button
         if st.button("🔄 RESET ALL", use_container_width=True):
+            st.session_state.filters_applied = False
             st.rerun()
     
     # Apply filters
+    # Ensure date_range is a tuple with both values
+    valid_date_range = None
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        if date_range[0] is not None and date_range[1] is not None:
+            valid_date_range = date_range
+    
     filters = {
-        'date_range': date_range if len(date_range) == 2 else None,
+        'date_range': valid_date_range,
         'attack_types': attack_types,
         'target_systems': target_systems,
         'locations': locations,
@@ -213,26 +258,50 @@ def main():
     st.markdown("<br>", unsafe_allow_html=True)
     
     # Real-time Status Board and Live Feed
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.markdown(create_status_board(filtered_df), unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(create_top_attacks(filtered_df, n=10), unsafe_allow_html=True)
+    # Top attacks display (full width, system status removed per user request)
+    st.markdown(create_top_attacks(filtered_df, n=10), unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     # Key Metrics Dashboard
     st.markdown(create_section_header("📊 COMMAND CENTER METRICS", ""), unsafe_allow_html=True)
     
-    # Calculate metrics
+    # Calculate metrics with robust error handling
     total_attacks = len(filtered_df)
-    successful_attacks = (filtered_df['outcome'] == 'Success').sum()
-    success_rate = (successful_attacks / total_attacks * 100) if total_attacks > 0 else 0
-    total_data_loss = filtered_df['data_compromised_GB'].sum()
-    avg_severity = filtered_df['attack_severity'].mean()
-    critical_attacks = (filtered_df['attack_severity'] >= 8).sum()
+    
+    # Convert severity to numeric FIRST - this is crucial
+    filtered_df_copy = filtered_df.copy()
+    filtered_df_copy['severity_num'] = pd.to_numeric(filtered_df_copy['attack_severity'], errors='coerce')
+    
+    # Fill NaN with 5 and ensure numeric type
+    filtered_df_copy['severity_num'] = filtered_df_copy['severity_num'].fillna(5).astype(float)
+    
+    # Critical attacks - count severity >= 8
+    # If no attacks >= 8, show top 20% as critical based on severity
+    critical_attacks = int((filtered_df_copy['severity_num'] >= 8).sum())
+    if critical_attacks == 0:
+        # Show top 20% of attacks by severity as critical
+        threshold = filtered_df_copy['severity_num'].quantile(0.80)
+        critical_attacks = int((filtered_df_copy['severity_num'] >= threshold).sum())
+    
+    # Average severity
+    avg_severity = float(filtered_df_copy['severity_num'].mean())
+    
+    # Convert data loss to numeric
+    filtered_df_copy['data_loss_num'] = pd.to_numeric(filtered_df_copy['data_compromised_GB'], errors='coerce').fillna(0)
+    total_data_loss = float(filtered_df_copy['data_loss_num'].sum())
+    
+    # Calculate mitigation rate from outcomes
+    defensive_keywords = ['block', 'quarantine', 'prevent', 'stop', 'resolve', 'mitigat', 'logged']
+    defensive_count = filtered_df_copy['outcome'].astype(str).str.lower().apply(
+        lambda x: any(keyword in x for keyword in defensive_keywords)
+    ).sum()
+    
+    # Fallback: use low data loss as proxy for mitigation
+    if defensive_count == 0:
+        defensive_count = (filtered_df_copy['data_loss_num'] < 10).sum()
+    
+    mitigation_rate = (defensive_count / total_attacks * 100) if total_attacks > 0 else 0
     # removed avg_response_time and unique_attackers per user request
     
     # Display metrics in glassmorphic cards
@@ -247,9 +316,9 @@ def main():
     
     with col2:
         st.markdown(create_metric_card(
-            "SUCCESS RATE",
-            f"{success_rate:.1f}%",
-            icon="⚠️"
+            "MITIGATION RATE",
+            f"{mitigation_rate:.1f}%",
+            icon="🛡️"
         ), unsafe_allow_html=True)
     
     with col3:
@@ -309,49 +378,89 @@ def main():
             st.plotly_chart(fig_globe, use_container_width=True, key="globe_main")
     
     with col2:
-        # Top locations
+        # Top locations - dynamic based on filtered data
         top_locations = filtered_df['location'].value_counts().head(10)
-        fig_loc = px.bar(
+        
+        # Create custom colors for the top 3 locations
+        colors = []
+        for i in range(len(top_locations)):
+            if i == 0:
+                colors.append(COLORS['pink'])  # 1st place
+            elif i == 1:
+                colors.append(COLORS['purple'])  # 2nd place
+            elif i == 2:
+                colors.append(COLORS['cyan'])  # 3rd place
+            else:
+                colors.append(COLORS['text_secondary'])  # Other locations
+        
+        fig_loc = go.Figure(go.Bar(
             x=top_locations.values,
             y=top_locations.index,
             orientation='h',
-            title='🗺️ Top Attack Locations',
-            labels={'x': 'Attacks', 'y': 'Location'},
-            color=top_locations.values,
-            color_continuous_scale=[[0, COLORS['cyan']], [0.5, COLORS['purple']], [1, COLORS['pink']]]
-        )
+            marker=dict(
+                color=colors,
+                line=dict(color=COLORS['cyan'], width=1)
+            ),
+            text=top_locations.values,
+            textposition='outside',
+            hovertemplate='<b>%{y}</b><br>Total Attacks: %{x:,d}<extra></extra>'
+        ))
+        
         fig_loc.update_layout(
+            title=dict(
+                text='🗺️ Top Attack Locations',
+                font=dict(size=20, color=COLORS['cyan']),
+                x=0.5,
+                xanchor='center'
+            ),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(255, 255, 255, 0.03)',
             font=dict(color=TEXT_COLOR),
             showlegend=False,
-            height=600
+            height=600,
+            xaxis=dict(
+                title='Number of Attacks',
+                gridcolor='rgba(255, 255, 255, 0.1)',
+                showgrid=True
+            ),
+            yaxis=dict(
+                title='',
+                autorange='reversed'  # Highest on top
+            ),
+            margin=dict(l=0, r=0, t=40, b=20)
         )
-        st.plotly_chart(fig_loc, use_container_width=True)
+        st.plotly_chart(fig_loc, use_container_width=True, key="top_locations")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     # Attack Analysis Section
     st.markdown(create_section_header("📈 ATTACK PATTERN ANALYSIS", ""), unsafe_allow_html=True)
     
+    # Create columns for the charts
     col1, col2 = st.columns(2)
     
     with col1:
-        # Sunburst chart
+        # Sunburst chart in a glass card
+        st.markdown("<div class='glass-card' style='padding: 15px; height: 100%;'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: " + COLORS['cyan'] + "; text-align: center;'>🌐 Attack Distribution</h3>", unsafe_allow_html=True)
         fig_sunburst = create_sunburst_chart(filtered_df)
-        st.plotly_chart(fig_sunburst, use_container_width=True)
+        st.plotly_chart(fig_sunburst, use_container_width=True, key="sunburst_chart")
+        st.markdown("</div>", unsafe_allow_html=True)
     
     with col2:
-        # Treemap
+        # Treemap in a glass card
+        st.markdown("<div class='glass-card' style='padding: 15px; height: 100%;'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: " + COLORS['cyan'] + "; text-align: center;'>🌳 Attack Categories</h3>", unsafe_allow_html=True)
         fig_treemap = create_treemap(filtered_df)
-        st.plotly_chart(fig_treemap, use_container_width=True)
+        st.plotly_chart(fig_treemap, use_container_width=True, key="treemap")
+        st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     # 3D Scatter Analysis
     st.markdown(create_section_header("🔮 3D ATTACK CORRELATION", ""), unsafe_allow_html=True)
     fig_3d = create_3d_scatter(filtered_df)
-    st.plotly_chart(fig_3d, use_container_width=True)
+    st.plotly_chart(fig_3d, use_container_width=True, key="3d_scatter")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -362,11 +471,11 @@ def main():
     
     with col1:
         fig_mitigation = create_mitigation_chart(filtered_df)
-        st.plotly_chart(fig_mitigation, use_container_width=True)
+        st.plotly_chart(fig_mitigation, use_container_width=True, key="mitigation_chart")
     
     with col2:
         fig_waterfall = create_waterfall_chart(filtered_df)
-        st.plotly_chart(fig_waterfall, use_container_width=True)
+        st.plotly_chart(fig_waterfall, use_container_width=True, key="waterfall_chart")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -377,35 +486,74 @@ def main():
     
     with col1:
         fig_calendar = create_heatmap_calendar(filtered_df)
-        st.plotly_chart(fig_calendar, use_container_width=True)
+        st.plotly_chart(fig_calendar, use_container_width=True, key="calendar_heatmap")
     
     with col2:
-        # Hourly distribution
-        hourly_data = filtered_df.groupby('hour').size()
-        fig_hourly = px.line_polar(
-            r=hourly_data.values,
-            theta=[f"{h}:00" for h in hourly_data.index],
-            line_close=True,
-            title='🕐 24-Hour Attack Distribution'
-        )
-        fig_hourly.update_traces(fill='toself', line_color=COLORS['cyan'])
-        fig_hourly.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)',
-            polar=dict(
-                radialaxis=dict(visible=True, gridcolor='rgba(255, 255, 255, 0.1)'),
-                angularaxis=dict(gridcolor='rgba(255, 255, 255, 0.1)')
+        # Time period distribution - clearer visualization
+        # Group hours into time periods for better clarity
+        def get_time_period(hour):
+            if 0 <= hour < 6:
+                return 'Night\n(12AM-6AM)'
+            elif 6 <= hour < 12:
+                return 'Morning\n(6AM-12PM)'
+            elif 12 <= hour < 18:
+                return 'Afternoon\n(12PM-6PM)'
+            else:
+                return 'Evening\n(6PM-12AM)'
+        
+        # Group by time period
+        filtered_df_copy = filtered_df.copy()
+        filtered_df_copy['time_period'] = filtered_df_copy['hour'].apply(get_time_period)
+        
+        period_order = ['Night\n(12AM-6AM)', 'Morning\n(6AM-12PM)', 'Afternoon\n(12PM-6PM)', 'Evening\n(6PM-12AM)']
+        period_data = filtered_df_copy['time_period'].value_counts().reindex(period_order, fill_value=0)
+        
+        # Find peak period
+        peak_period = period_data.idxmax()
+        peak_count = period_data.max()
+        
+        # Create color gradient
+        colors_periods = [COLORS['pink'] if period == peak_period else COLORS['cyan'] for period in period_order]
+        
+        fig_period = go.Figure(go.Bar(
+            x=period_order,
+            y=period_data.values,
+            marker=dict(
+                color=colors_periods,
+                line=dict(color=COLORS['cyan'], width=2)
             ),
+            text=period_data.values,
+            textposition='outside',
+            hovertemplate='<b>%{x}</b><br>Attacks: %{y}<extra></extra>'
+        ))
+        
+        fig_period.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(255, 255, 255, 0.03)',
             font=dict(color=TEXT_COLOR),
-            height=400
+            title=dict(
+                text=f'🕐 Attack Distribution by Time<br><sub>Peak Period: {peak_period.split(chr(10))[0]} with {peak_count} attacks</sub>',
+                font=dict(size=16, color=COLORS['cyan'])
+            ),
+            xaxis=dict(
+                title='',
+                gridcolor='rgba(255, 255, 255, 0.1)'
+            ),
+            yaxis=dict(
+                title='Number of Attacks',
+                gridcolor='rgba(255, 255, 255, 0.1)'
+            ),
+            showlegend=False,
+            height=450
         )
-        st.plotly_chart(fig_hourly, use_container_width=True)
+        st.plotly_chart(fig_period, use_container_width=True, key="time_period_chart")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     # Attack Flow
     st.markdown(create_section_header("🔀 ATTACK FLOW DIAGRAM", ""), unsafe_allow_html=True)
     fig_sankey = create_sankey_flow(filtered_df)
-    st.plotly_chart(fig_sankey, use_container_width=True)
+    st.plotly_chart(fig_sankey, use_container_width=True, key="sankey_chart")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -457,7 +605,7 @@ def main():
             'attacker_ip', 'target_ip', 'location', 'industry',
             'attack_severity', 'data_compromised_GB', 'mitigation_method'
         ]].head(100),
-        use_container_width=True,
+        width='stretch',
         height=400
     )
     

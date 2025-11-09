@@ -130,7 +130,7 @@ def create_terminal_feed(df, n_recent=20):
     
     return feed_html
 
-def create_attack_ticker(df, n_items=5):
+def create_attack_ticker(df, n_items=10):
     """
     Create scrolling ticker of critical attacks
     
@@ -147,8 +147,17 @@ def create_attack_ticker(df, n_items=5):
         HTML for ticker
     """
     
-    # Get critical attacks (severity >= 8)
+    # Get critical attacks (severity >= 8), fallback to high severity (>= 7) if not enough
     critical = df[df['attack_severity'] >= 8].nlargest(n_items, 'timestamp')
+    
+    # If we don't have enough critical attacks, add high severity ones
+    if len(critical) < n_items:
+        high_severity = df[df['attack_severity'] >= 7].nlargest(n_items, 'timestamp')
+        critical = high_severity
+    
+    # Ensure we have at least some items
+    if len(critical) == 0:
+        critical = df.nlargest(min(n_items, len(df)), 'timestamp')
     
     ticker_items = []
     for idx, attack in critical.iterrows():
@@ -157,7 +166,8 @@ def create_attack_ticker(df, n_items=5):
             f"in {attack['location']} - {attack['data_compromised_GB']:.1f}GB lost"
         )
     
-    ticker_text = " | ".join(ticker_items)
+    # Duplicate ticker items for seamless loop
+    ticker_text = " | ".join(ticker_items) + " | " + " | ".join(ticker_items)
     
     ticker_html = f"""
     <div style="
@@ -171,8 +181,7 @@ def create_attack_ticker(df, n_items=5):
     ">
         <div style="
             display: inline-block;
-            padding-left: 100%;
-            animation: scroll-left 30s linear infinite;
+            animation: scroll-left 25s linear infinite;
             color: white;
             font-weight: 600;
             font-size: 14px;
@@ -183,8 +192,8 @@ def create_attack_ticker(df, n_items=5):
     
     <style>
         @keyframes scroll-left {{
-            0% {{ transform: translateX(0); }}
-            100% {{ transform: translateX(-100%); }}
+            0% {{ transform: translateX(0%); }}
+            100% {{ transform: translateX(-50%); }}
         }}
     </style>
     """

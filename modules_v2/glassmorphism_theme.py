@@ -79,14 +79,10 @@ def apply_glassmorphism_theme():
     /* ========== TYPOGRAPHY ========== */
     h1, h2, h3 {{
         font-family: 'Orbitron', sans-serif !important;
-        background: linear-gradient(90deg, {COLORS['cyan']}, {COLORS['purple']}, {COLORS['pink']});
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: #ffffff !important;
         font-weight: 700;
         letter-spacing: 2px;
-        /* reduced shadow to avoid blurred headings */
-        text-shadow: 0 0 6px rgba(0, 245, 255, 0.12);
+        text-shadow: 0 0 10px rgba(0, 245, 255, 0.4), 0 0 20px rgba(0, 245, 255, 0.2);
     }}
     
     p, div, span, label {{
@@ -369,11 +365,11 @@ def create_header(title, subtitle=""):
         <h1 style="
             font-size: 48px; 
             margin-bottom: 10px;
-            color: {COLORS['text_primary']};
+            color: #ffffff;
             font-family: 'Orbitron', sans-serif;
             font-weight: 700;
             letter-spacing: 3px;
-            text-shadow: none; /* remove heavy glow for readability */
+            text-shadow: 0 0 10px rgba(0, 245, 255, 0.4), 0 0 20px rgba(0, 245, 255, 0.2);
         ">
             🛡️ {title}
         </h1>

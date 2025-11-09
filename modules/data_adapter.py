@@ -47,13 +47,16 @@ def map_global_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
     mapped = df.copy()
 
-    # Create or map Timestamp: use Year if present otherwise use now
+    # Create or map Timestamp robustly: prefer existing lowercase 'timestamp', then (Y/y)ear
     if 'Timestamp' not in mapped.columns:
-        if 'Year' in mapped.columns:
-            # set to Jan 1 of the Year to create a datetime column
-            mapped['Timestamp'] = pd.to_datetime(mapped['Year'].astype(str) + '-01-01')
+        if 'timestamp' in mapped.columns:
+            mapped['Timestamp'] = pd.to_datetime(mapped['timestamp'], errors='coerce')
+        elif 'Year' in mapped.columns:
+            mapped['Timestamp'] = pd.to_datetime(mapped['Year'].astype(str) + '-01-01', errors='coerce')
+        elif 'year' in mapped.columns:
+            mapped['Timestamp'] = pd.to_datetime(mapped['year'].astype(str) + '-01-01', errors='coerce')
         else:
-            mapped['Timestamp'] = pd.Timestamp.now()
+            mapped['Timestamp'] = pd.to_datetime(pd.Series([pd.Timestamp.now()] * len(mapped)), errors='coerce')
 
     # Device Information with enhanced detail
     if 'Device Information' not in mapped.columns:
@@ -163,8 +166,17 @@ def map_global_schema(df: pd.DataFrame) -> pd.DataFrame:
         mapped['Latitude'] = merged['lat'].fillna(0)
         mapped['Longitude'] = merged['lon'].fillna(0)
 
-    # Ensure Timestamp is datetime for time-based visualizations
-    mapped['Timestamp'] = pd.to_datetime(mapped['Timestamp'], errors='coerce').fillna(pd.Timestamp.now())
+    # Ensure Timestamp is datetime for time-based visualizations; avoid forcing 'now' which breaks year filters
+    mapped['Timestamp'] = pd.to_datetime(mapped['Timestamp'], errors='coerce')
+    # If we still have missing timestamps, try derive from any year column; otherwise drop invalid rows
+    if mapped['Timestamp'].isna().any():
+        if 'Year' in mapped.columns:
+            mapped.loc[mapped['Timestamp'].isna(), 'Timestamp'] = pd.to_datetime(
+                mapped.loc[mapped['Timestamp'].isna(), 'Year'].astype(str) + '-01-01', errors='coerce')
+        if 'year' in mapped.columns:
+            mapped.loc[mapped['Timestamp'].isna(), 'Timestamp'] = pd.to_datetime(
+                mapped.loc[mapped['Timestamp'].isna(), 'year'].astype(str) + '-01-01', errors='coerce')
+        mapped = mapped.dropna(subset=['Timestamp']).reset_index(drop=True)
 
     # Keep canonical columns plus any original columns
     # But for safety, ensure canonical columns exist
@@ -186,11 +198,13 @@ def map_global_schema(df: pd.DataFrame) -> pd.DataFrame:
 
     # Timestamp
     if 'Timestamp' in mapped.columns:
-        standardized['timestamp'] = pd.to_datetime(mapped['Timestamp'], errors='coerce').fillna(pd.Timestamp.now())
+        standardized['timestamp'] = pd.to_datetime(mapped['Timestamp'], errors='coerce')
     elif 'timestamp' in mapped.columns:
-        standardized['timestamp'] = pd.to_datetime(mapped['timestamp'], errors='coerce').fillna(pd.Timestamp.now())
+        standardized['timestamp'] = pd.to_datetime(mapped['timestamp'], errors='coerce')
     elif 'Year' in mapped.columns:
-        standardized['timestamp'] = pd.to_datetime(mapped['Year'].astype(str) + '-01-01')
+        standardized['timestamp'] = pd.to_datetime(mapped['Year'].astype(str) + '-01-01', errors='coerce')
+    elif 'year' in mapped.columns:
+        standardized['timestamp'] = pd.to_datetime(mapped['year'].astype(str) + '-01-01', errors='coerce')
     else:
         standardized['timestamp'] = _as_series(pd.Timestamp.now())
 
@@ -202,9 +216,9 @@ def map_global_schema(df: pd.DataFrame) -> pd.DataFrame:
     else:
         standardized['attack_type'] = _as_series(mapped.get('Attack Signature', 'Unknown'))
 
-    # Target system / device (prefer device info, fall back to Target or Target Industry)
+    # Target system / device (prefer device info, fall back to target_system, Target, Target Industry)
     standardized['target_system'] = _as_series(
-        mapped.get('Device Information', mapped.get('Target', mapped.get('Target Industry', 'Unknown System')))
+        mapped.get('Device Information', mapped.get('target_system', mapped.get('Target', mapped.get('Target Industry', 'Unknown System'))))
     )
 
     # Location / country
@@ -215,8 +229,10 @@ def map_global_schema(df: pd.DataFrame) -> pd.DataFrame:
     else:
         standardized['location'] = _as_series('Unknown')
 
-    # Industry (map Target Industry if present)
-    standardized['industry'] = _as_series(mapped.get('Industry', mapped.get('industry', mapped.get('Target Industry', 'Various'))))
+    # Industry (map both lower/upper-case variants)
+    standardized['industry'] = _as_series(
+        mapped.get('Industry', mapped.get('industry', mapped.get('Target Industry', mapped.get('target_industry', 'Various'))))
+    )
 
     # Severity numeric
     if 'attack_severity' in mapped.columns:
@@ -310,22 +326,22 @@ def load_best_dataset(root_dir: str = '.') -> pd.DataFrame:
         st.error('No CSV dataset found in project directory.')
         st.stop()
 
-    st.info(f"Loading dataset: {ds.name}")
+    # Silently load dataset
     df = pd.read_csv(ds)
 
     # Heuristics: if this looks like the global dataset, map accordingly
     if 'Country' in df.columns and 'Financial Loss (in Million $)' in df.columns:
         mapped = map_global_schema(df)
-        st.info('Applied mapping from Global_Cybersecurity_Threats schema to canonical schema.')
+        # Applied mapping from Global_Cybersecurity_Threats schema to canonical schema
         return mapped
 
     # If it already contains some canonical columns, try to make minimal adjustments
     if 'Timestamp' in df.columns and 'Attack Type' in df.columns:
         # ensure Timestamp is datetime
         df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce').fillna(pd.Timestamp.now())
-        st.info('Loaded dataset with Timestamp and Attack Type; minimal mapping applied.')
+        # Loaded dataset with Timestamp and Attack Type; minimal mapping applied
         return df
 
     # Fallback: map minimally using global mapper
-    st.info('Unknown CSV schema detected — applying best-effort mapping.')
+    # Unknown CSV schema detected — applying best-effort mapping
     return map_global_schema(df)

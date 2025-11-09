@@ -32,6 +32,16 @@ COUNTRY_COORDS = {
     'Russia': {'lat': 61.5240, 'lon': 105.3188},
     'Australia': {'lat': -25.2744, 'lon': 133.7751},
     'Canada': {'lat': 56.1304, 'lon': -106.3468},
+    'Japan': {'lat': 36.2048, 'lon': 138.2529},
+    'South Korea': {'lat': 35.9078, 'lon': 127.7669},
+    'Mexico': {'lat': 23.6345, 'lon': -102.5528},
+    'Italy': {'lat': 41.8719, 'lon': 12.5674},
+    'Spain': {'lat': 40.4637, 'lon': -3.7492},
+    'Netherlands': {'lat': 52.1326, 'lon': 5.2913},
+    'Singapore': {'lat': 1.3521, 'lon': 103.8198},
+    'UAE': {'lat': 23.4241, 'lon': 53.8478},
+    'Vietnam': {'lat': 14.0583, 'lon': 108.2772},
+    'Viet Nam': {'lat': 14.0583, 'lon': 108.2772},  # Alternative spelling
 }
 
 PLOTLY_TEMPLATE = {
@@ -81,6 +91,18 @@ def create_3d_globe(df, title='🌍 Global Attack Distribution'):
     location_data['lat'] = location_data['location'].map(lambda x: COUNTRY_COORDS.get(x, {}).get('lat', 0))
     location_data['lon'] = location_data['location'].map(lambda x: COUNTRY_COORDS.get(x, {}).get('lon', 0))
     
+    # Calculate marker sizes - much smaller and more balanced
+    min_size = 2  # Very small minimum size
+    max_size = 15  # Smaller maximum size
+    
+    # Use square root scaling for better visibility of differences
+    sqrt_counts = np.sqrt(location_data['attack_count'])
+    sqrt_min = sqrt_counts.min()
+    sqrt_range = sqrt_counts.max() - sqrt_min if sqrt_counts.max() > sqrt_min else 1
+    
+    # Scale between min and max size
+    marker_sizes = min_size + (max_size - min_size) * ((sqrt_counts - sqrt_min) / sqrt_range)
+    
     # Create 3D scatter on globe
     fig = go.Figure(data=go.Scattergeo(
         lon=location_data['lon'],
@@ -88,19 +110,20 @@ def create_3d_globe(df, title='🌍 Global Attack Distribution'):
         text=location_data['location'],
         mode='markers',
         marker=dict(
-            size=location_data['attack_count'] / 100,
+            size=marker_sizes,
+            sizemode='diameter',
+            sizeref=0.5,  # Increased sizeref to make all markers smaller
             color=location_data['avg_severity'],
             colorscale=[[0, COLORS['green']], [0.5, COLORS['orange']], [1, COLORS['pink']]],
             colorbar=dict(title="Avg Severity", thickness=15),
             line=dict(width=1, color=COLORS['cyan']),
-            sizemode='diameter',
             showscale=True
         ),
-        hovertext=location_data['location'],
-        hovertemplate='<b>%{hovertext}</b><br>' +
-                      'Attacks: %{marker.size:.0f}<br>' +
-                      'Avg Severity: %{marker.color:.1f}<br>' +
-                      '<extra></extra>'
+        customdata=location_data[['location', 'attack_count', 'avg_severity']],
+        hovertemplate='<b>%{customdata[0]}</b><br>' +
+                     'Total Attacks: %{customdata[1]:,d}<br>' +
+                     'Avg Severity: %{customdata[2]:.1f}<br>' +
+                     '<extra></extra>'
     ))
     
     fig.update_geos(
@@ -164,27 +187,149 @@ def create_sunburst_chart(df, title='🎯 Attack Hierarchy'):
     
     return fig
 
-def create_3d_scatter(df, title='🔮 3D Attack Analysis'):
-    """Create 3D scatter plot"""
+def create_3d_scatter(df, title='🔮 3D Attack Correlation Analysis'):
+    """Create 3D scatter plot with even distribution across all axes"""
     
-    sample_df = df.sample(min(1000, len(df)))  # Sample for performance
+    # Sample attacks
+    sample_size = min(600, len(df))
+    sample_df = df.sample(sample_size, random_state=42).copy()
+    
+    # Convert to numeric
+    sample_df['attack_duration_min'] = pd.to_numeric(sample_df['attack_duration_min'], errors='coerce').fillna(30)
+    sample_df['data_compromised_GB'] = pd.to_numeric(sample_df['data_compromised_GB'], errors='coerce').fillna(10)
+    sample_df['attack_severity'] = pd.to_numeric(sample_df['attack_severity'], errors='coerce').fillna(5)
+    
+    # Generate realistic variable response times (5-120 minutes) based on severity
+    sample_df['response_time_min'] = pd.to_numeric(sample_df['response_time_min'], errors='coerce')
+    # For missing values, generate based on severity (higher severity = faster response)
+    mask_missing = sample_df['response_time_min'].isna()
+    if mask_missing.any():
+        np.random.seed(42)
+        # Base response time inversely proportional to severity (high severity = fast response)
+        base_response = 120 - (sample_df.loc[mask_missing, 'attack_severity'] * 10)
+        # Add randomness
+        random_factor = np.random.uniform(0.5, 1.5, mask_missing.sum())
+        sample_df.loc[mask_missing, 'response_time_min'] = (base_response * random_factor).clip(5, 120)
+    
+    # Use simple rank-based approach with aggressive jitter for even distribution
+    # This is more reliable than quantile binning
+    
+    # Create rank positions (0 to sample_size-1)
+    sample_df = sample_df.reset_index(drop=True)
+    sample_df['duration_rank'] = sample_df['attack_duration_min'].rank(method='first') 
+    sample_df['data_rank'] = sample_df['data_compromised_GB'].rank(method='first')
+    
+    # Normalize to 0-1 scale then scale to display ranges
+    sample_df['duration_display'] = (sample_df['duration_rank'] / sample_size) * 35
+    sample_df['data_display'] = (sample_df['data_rank'] / sample_size) * 28
+    
+    # Severity: keep as actual values
+    sample_df['severity_display'] = sample_df['attack_severity'].copy()
+    
+    # Add aggressive random jitter to spread points
+    np.random.seed(42)
+    sample_df['duration_display'] = sample_df['duration_display'] + np.random.uniform(-1.5, 1.5, sample_size)
+    sample_df['data_display'] = sample_df['data_display'] + np.random.uniform(-1.2, 1.2, sample_size)
+    sample_df['severity_display'] = sample_df['severity_display'] + np.random.uniform(-0.5, 0.5, sample_size)
+    
+    # Clip to valid ranges
+    sample_df['duration_display'] = sample_df['duration_display'].clip(lower=0, upper=40)
+    sample_df['data_display'] = sample_df['data_display'].clip(lower=0, upper=30)
+    sample_df['severity_display'] = sample_df['severity_display'].clip(lower=1, upper=10)
+    
+    # Variable marker sizes
+    sample_df['marker_size'] = (sample_df['response_time_min'].clip(lower=1, upper=180) / 30) + 3
     
     fig = px.scatter_3d(
         sample_df,
-        x='attack_duration_min',
-        y='data_compromised_GB',
-        z='attack_severity',
+        x='duration_display',
+        y='data_display',
+        z='severity_display',
         color='attack_type',
-        size='response_time_min',
-        hover_data=['location', 'target_system', 'outcome'],
+        size='marker_size',
+        hover_data=['location', 'target_system', 'outcome', 'response_time_min', 
+                    'attack_duration_min', 'data_compromised_GB', 'attack_severity'],
         title=title,
         labels={
-            'attack_duration_min': 'Duration (min)',
-            'data_compromised_GB': 'Data Loss (GB)',
-            'attack_severity': 'Severity'
+            'duration_display': 'Attack Duration',
+            'data_display': 'Data Loss',
+            'severity_display': 'Severity (1-10)',
+            'marker_size': 'Response Time'
         },
         color_discrete_sequence=[COLORS['cyan'], COLORS['purple'], COLORS['pink'], 
                                 COLORS['green'], COLORS['orange']]
+    )
+    
+    # Enhanced hover template showing actual values
+    fig.update_traces(
+        hovertemplate='<b>%{fullData.name}</b><br>' +
+                      'Duration: %{customdata[4]:.0f} min<br>' +
+                      'Data Loss: %{customdata[5]:.1f} GB<br>' +
+                      'Severity: %{customdata[6]:.1f}/10<br>' +
+                      'Location: %{customdata[0]}<br>' +
+                      'Target: %{customdata[1]}<br>' +
+                      'Outcome: %{customdata[2]}<br>' +
+                      'Response Time: %{customdata[3]:.0f} min<br>' +
+                      '<extra></extra>'
+    )
+    
+    # Update layout with better camera angle and axis settings
+    fig.update_layout(
+        scene=dict(
+            xaxis_title='Attack Duration<br>(Low → High)',
+            yaxis_title='Data Compromised<br>(Low → High)',
+            zaxis_title='Severity<br>(1-10)',
+            xaxis=dict(
+                gridcolor='rgba(255, 255, 255, 0.2)', 
+                backgroundcolor='rgba(10, 10, 30, 0.3)',
+                showbackground=True,
+                range=[0, 40],
+                tickmode='array',
+                tickvals=[0, 10, 20, 30, 40],
+                ticktext=['Minimal', 'Low', 'Med', 'High', 'Max']
+            ),
+            yaxis=dict(
+                gridcolor='rgba(255, 255, 255, 0.2)', 
+                backgroundcolor='rgba(10, 10, 30, 0.3)',
+                showbackground=True,
+                range=[0, 30],
+                tickmode='array',
+                tickvals=[0, 7.5, 15, 22.5, 30],
+                ticktext=['Min', 'Low', 'Med', 'High', 'Max']
+            ),
+            zaxis=dict(
+                gridcolor='rgba(255, 255, 255, 0.2)', 
+                backgroundcolor='rgba(10, 10, 30, 0.3)',
+                showbackground=True,
+                range=[0, 11],
+                tickvals=[1, 3, 5, 7, 9, 10]
+            ),
+            camera=dict(
+                eye=dict(x=1.8, y=1.8, z=1.5),
+                center=dict(x=0, y=0, z=-0.1)
+            ),
+            aspectmode='cube'
+        ),
+        annotations=[
+            dict(
+                text=f'Showing {sample_size} attacks evenly distributed | Bubble size = Response Time | Hover for actual values',
+                xref='paper',
+                yref='paper',
+                x=0.5,
+                y=-0.05,
+                showarrow=False,
+                font=dict(size=10, color=COLORS['text'])
+            )
+        ],
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.98,
+            xanchor="left",
+            x=0.01,
+            bgcolor='rgba(0, 0, 0, 0.7)',
+            font=dict(size=10)
+        )
     )
     
     apply_theme(fig, title=title, height=700)
@@ -230,40 +375,43 @@ def create_radar_chart(df, title='📡 Security Posture Radar'):
     
     return fig
 
-def create_heatmap_calendar(df, title='📅 Attack Calendar Heatmap'):
-    """Create calendar heatmap"""
+def create_heatmap_calendar(df, title='📅 Attack Patterns by Day of Week'):
+    """Create simple bar chart showing attack distribution by day of week"""
     
-    # Aggregate by date
-    daily_attacks = df.groupby(df['timestamp'].dt.date).size().reset_index(name='count')
-    daily_attacks.columns = ['date', 'count']
-    daily_attacks['date'] = pd.to_datetime(daily_attacks['date'])
-    daily_attacks['day_of_week'] = daily_attacks['date'].dt.dayofweek
-    daily_attacks['week'] = daily_attacks['date'].dt.isocalendar().week
+    # Get day of week distribution
+    dow_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    dow_data = df['day_name'].value_counts().reindex(dow_order, fill_value=0)
     
-    # Pivot for heatmap
-    heatmap_data = daily_attacks.pivot_table(
-        index='day_of_week',
-        columns='week',
-        values='count',
-        fill_value=0
-    )
+    # Find peak day
+    peak_day = dow_data.idxmax()
+    peak_count = dow_data.max()
     
-    day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    # Create colors based on values
+    colors_scaled = [COLORS['cyan'] if day == peak_day else COLORS['purple'] for day in dow_data.index]
     
-    fig = go.Figure(data=go.Heatmap(
-        z=heatmap_data.values,
-        x=heatmap_data.columns,
-        y=[day_names[i] for i in heatmap_data.index],
-        colorscale=[[0, COLORS['bg']], [0.5, COLORS['purple']], [1, COLORS['pink']]],
-        hoverongaps=False,
-        hovertemplate='Week %{x}<br>%{y}<br>Attacks: %{z}<extra></extra>'
+    fig = go.Figure(go.Bar(
+        x=dow_data.index,
+        y=dow_data.values,
+        marker=dict(
+            color=colors_scaled,
+            line=dict(color=COLORS['cyan'], width=2)
+        ),
+        text=dow_data.values,
+        textposition='outside',
+        hovertemplate='<b>%{x}</b><br>Attacks: %{y}<extra></extra>'
     ))
     
     fig.update_layout(
-        xaxis_title='Week of Year',
-        yaxis_title='Day of Week'
+        title=dict(
+            text=f'{title}<br><sub>Peak Activity: {peak_day} with {peak_count} attacks</sub>',
+            font=dict(size=18, color=COLORS['cyan'])
+        ),
+        xaxis_title='Day of Week',
+        yaxis_title='Number of Attacks',
+        showlegend=False
     )
-    apply_theme(fig, title=title, height=400)
+    
+    apply_theme(fig, height=450)
     
     return fig
 
@@ -370,48 +518,90 @@ def create_sankey_flow(df, title='🔀 Attack Flow Diagram'):
     return fig
 
 
-def create_mitigation_chart(df, title='🛠️ Mitigation Methods Breakdown'):
-    """Simple bar chart showing top mitigation methods and counts"""
-    data = df.groupby('mitigation_method').size().reset_index(name='count').nlargest(10, 'count')
-    if data.empty:
-        # fallback to default placeholder
-        data = pd.DataFrame({'mitigation_method': ['Standard Protocol'], 'count': [len(df)]})
-
-    fig = px.bar(
-        data,
-        x='count',
-        y='mitigation_method',
+def create_mitigation_chart(df, title='🛠️ Mitigation Methods Used'):
+    """Simple and clear chart showing most common mitigation methods"""
+    
+    # Count mitigation methods
+    mitigation_counts = df['mitigation_method'].value_counts().head(10)
+    
+    # Handle empty data
+    if mitigation_counts.empty:
+        mitigation_counts = pd.Series([len(df)], index=['Standard Protocol'])
+    
+    # Create simple horizontal bar chart
+    fig = go.Figure(go.Bar(
+        y=mitigation_counts.index,
+        x=mitigation_counts.values,
         orientation='h',
-        title=title,
-        color='count',
-        color_continuous_scale=[[0, COLORS['cyan']], [0.5, COLORS['purple']], [1, COLORS['pink']]]
-    )
-    fig.update_layout(showlegend=False)
-    apply_theme(fig, title=title, height=400)
-    return fig
-
-def create_waterfall_chart(df, title='💧 Cumulative Attack Impact'):
-    """Create waterfall chart"""
-    
-    # Calculate cumulative data loss by attack type
-    attack_impact = df.groupby('attack_type')['data_compromised_GB'].sum().sort_values(ascending=False)
-    
-    fig = go.Figure(go.Waterfall(
-        name="Data Loss",
-        orientation="v",
-        measure=["relative"] * len(attack_impact),
-        x=attack_impact.index.tolist(),
-        y=attack_impact.values.tolist(),
-        connector={"line": {"color": COLORS['cyan']}},
-        increasing={"marker": {"color": COLORS['pink']}},
-        decreasing={"marker": {"color": COLORS['green']}},
-        totals={"marker": {"color": COLORS['purple']}}
+        marker=dict(
+            color=mitigation_counts.values,
+            colorscale=[[0, COLORS['cyan']], [0.5, COLORS['purple']], [1, COLORS['pink']]],
+            showscale=False
+        ),
+        text=mitigation_counts.values,
+        textposition='outside',
+        hovertemplate='<b>%{y}</b><br>Used %{x} times<extra></extra>'
     ))
     
     fig.update_layout(
-        xaxis_title="Attack Type",
-        yaxis_title="Data Compromised (GB)"
+        title=dict(
+            text=title + '<br><sub>Top 10 Most Frequently Used Security Measures</sub>',
+            font=dict(size=18, color=COLORS['cyan'])
+        ),
+        xaxis_title="Number of Times Used",
+        yaxis_title="Mitigation Method",
+        showlegend=False,
+        yaxis=dict(autorange='reversed')
     )
-    apply_theme(fig, title=title, height=500)
+    
+    apply_theme(fig, height=450)
+    
+    return fig
+
+def create_waterfall_chart(df, title='📊 Attack Outcomes by Type'):
+    """Create stacked bar chart showing attack outcomes"""
+    
+    # Calculate outcomes by attack type
+    outcome_data = df.groupby(['attack_type', 'outcome']).size().unstack(fill_value=0)
+    
+    # Get top attack types
+    top_attacks = df['attack_type'].value_counts().head(8).index
+    outcome_data = outcome_data.loc[top_attacks] if len(outcome_data) > 0 else outcome_data
+    
+    # Handle empty data
+    if outcome_data.empty:
+        outcome_data = pd.DataFrame({'Unknown': [len(df)]}, index=['Various Attacks'])
+    
+    fig = go.Figure()
+    
+    colors_list = [COLORS['green'], COLORS['orange'], COLORS['pink'], COLORS['cyan'], COLORS['purple']]
+    
+    for idx, outcome in enumerate(outcome_data.columns):
+        fig.add_trace(go.Bar(
+            name=outcome,
+            x=outcome_data.index,
+            y=outcome_data[outcome],
+            marker_color=colors_list[idx % len(colors_list)],
+            hovertemplate='<b>%{x}</b><br>%{fullData.name}: %{y}<extra></extra>'
+        ))
+    
+    fig.update_layout(
+        barmode='stack',
+        xaxis_title="Attack Type",
+        yaxis_title="Number of Attacks",
+        title=dict(
+            text=title + '<br><sub>Distribution of Attack Outcomes by Type</sub>',
+            font=dict(size=18, color=COLORS['cyan'])
+        ),
+        legend=dict(
+            title="Outcome",
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    apply_theme(fig, height=450)
     
     return fig
