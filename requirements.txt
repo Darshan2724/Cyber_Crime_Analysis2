@@ -1,31 +1,25 @@
-# Core packages (pre-built wheels)
---only-binary=:all:
-streamlit==1.22.0
-pandas==1.3.3
-numpy==1.21.0
+# Core packages
+streamlit==1.28.0
+pandas==2.1.3
+numpy==1.26.2
 
 # Visualization packages
-plotly==5.8.0
-matplotlib==3.4.3
+plotly==5.18.0
+matplotlib==3.8.2
 
 # Machine Learning
-scikit-learn==0.24.2
+scikit-learn==1.3.2
 
 # Additional Features
-requests==2.28.0
+requests==2.31.0
 
-# Dependencies (pre-built wheels)
---only-binary=:all:
-wheel>=0.37.0
-setuptools>=59.0.0
-pillow>=8.4.0
-pytz>=2021.3
-six>=1.16.0
+# Dependencies
+pip>=23.3.1
+wheel>=0.41.3
+setuptools>=69.0.2
+pillow>=10.1.0
 python-dateutil>=2.8.2
-typing-extensions>=4.0.1
-attrs>=21.4.0
-click>=7.1.2
-decorator>=5.1.1
-protobuf>=3.19.0
-toml>=0.10.2
-watchdog>=2.1.9
+typing-extensions>=4.8.0
+click>=8.1.7
+protobuf>=4.25.1
+watchdog>=3.0.0
