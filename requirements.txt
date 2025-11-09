@@ -1,14 +1,18 @@
 # Core Framework
-streamlit==1.24.0
-pandas==1.5.3
-numpy==1.23.5
+streamlit==1.22.0
+pandas==1.4.4
+numpy==1.22.4
 
 # Visualizations
-plotly==5.15.0
-matplotlib==3.7.1
+plotly==5.13.0
+matplotlib==3.5.3
 
 # Machine Learning
-scikit-learn==1.2.2
+scikit-learn==1.0.2
 
 # Additional Features
-requests==2.31.0
+requests==2.28.2
+
+# Build dependencies
+wheel==0.37.1
+setuptools==65.5.1
